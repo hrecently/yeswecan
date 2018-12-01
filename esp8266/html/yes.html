@@ -1,0 +1,1133 @@
+<!doctype html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title>yesWeCAN</title>
+<style>
+body 
+{
+	 margin:0px;
+	 padding:0px;
+	 border:0px;
+	 background-color:#000;
+	 height:100%;
+}
+
+iframe
+{
+	 margin:0px;
+	 padding:0px;
+	 border:0px;
+	 width:100%;
+	 height:100%;
+}
+
+
+.winhead
+{
+	position:absolute;
+	top:-31px;
+	width:100%;
+	height:30px;
+	line-height:30px;
+	background-color:#E70;
+	font-family:Arial, Helvetica, sans-serif;
+	font-size:24px;
+	color:#FFF;
+	border:1px;
+	border-style:solid;
+	border-color:#000;
+}
+
+.winbody
+{
+	position:absolute;
+	border:1px;
+	border-style:solid;
+	border-color:#000;
+}
+
+</style>
+<script type="text/javascript" src="includer.js"></script>
+<script type="text/javascript">
+
+//
+// G L O B A L E   V A R I A B L E N
+//
+
+// Include-Dateien nacheinander laden, nicht parallel (WiFi-Modul nicht ueberfordern, wird von includer.js erledigt)
+var _Includes = [ "global.css", "xmlHttpReq.js", "sdo_def.js", "canBase.js", "winDiv.js", "menu.js", "espfs.js", "_helloObj.js", "_backImage.js", "_analogTacho.js", "_compass.js", "_servo.js", "_sawTooth.js", "_canSwitch.js" ];
+
+// Default-Werte fuer das Oeffnen eines neuen Fensters
+var _WinDefault =
+{
+	"system"     :{"width": "720", "height":"1280" },
+	"canView"    :{"width":"1280", "height": "720" },
+	"sdoView"    :{"width":"1280", "height": "720" },
+	"canDump"    :{"width": "720", "height":"1280" },
+	"phoneEdit"  :{"width": "720", "height":"1280" },
+	"paraEdit"   :{"width":"1280", "height":"1280" },
+	"monitor"    :{"width": "720", "height":"1280" },
+	"sys3D"      :{"width":"1980", "height":"1080" },
+	"yachtCtrl"  :{"width": "720", "height":"1280" },
+	
+	// Objects
+	"helloObj"    :{"width":  "480", "height":  "480" },
+	"backImage"   :{"width": "1920", "height": "1080" },
+	"analogTacho" :{"width":  "480", "height":  "480" },
+	"compass"     :{"width":  "480", "height":  "480" },
+	"servo"       :{"width":  "480", "height":  "480" },
+	"sawTooth"    :{"width":  "240", "height":  "240" },
+	"canSwitch"   :{"width": "1280", "height":  "720" }
+}
+
+// Definition Menu-Baum
+var _MenuDef =
+{
+	"root":
+	[
+		{
+			"text":"Desktop",
+			
+			"mpara":[
+				{	"text":"Load", "mfct":fileLoad, "fpar":{ "pathTop":"/desktops", "top":80, "left":10 }},
+				{	"text":"Save", "mfct":fileSave, "fpar":{ "pathTop":"/desktops", "top":80, "left":10 }},
+				{	"text":"Backup" , "mfct":backupDesktop },
+				{	"text":"Restore" , "mfct":restoreDesktop },
+				{	"text":"Close All", "mfct":clearDesktop },
+				{	"text":"Design","mpara":[ 
+					{	"text":"black", "mfct":setDesign, "fpar":"black" },
+					{	"text":"white", "mfct":setDesign, "fpar":"white" }]
+				},
+				{	"text":"Menu", "mpara":[
+					{	"text":"default", "mfct":setMenuDimmed, "fpar":false },
+					{	"text":"dimmed" , "mfct":setMenuDimmed, "fpar":true }]
+				}
+			]
+		},
+		{	
+			"text":"Apps", "mfct":fileLoad, "fpar":{ "pathTop":"/apps", "top":80, "left":140 }
+		},
+		{	
+			"text":"Objects", "mfct":fileLoad, "fpar":{ "pathTop":"/objects", "top":80, "left":240 }
+		},
+		{
+			"text":"OldObjs",
+			"mpara":[
+				{	"text":"helloObj"   , "mfct":openObj, "fpar":"helloObj" },
+				{	"text":"backImage"  , "mfct":openObj, "fpar":"backImage" },
+				{	"text":"analogTacho", "mfct":openObj, "fpar":"analogTacho" },
+				{	"text":"compass"    , "mfct":openObj, "fpar":"compass" },
+				{	"text":"servo"      , "mfct":openObj, "fpar":"servo" },
+				{	"text":"sawTooth"   , "mfct":openObj, "fpar":"sawTooth" },
+				{	"text":"CANswitch"  , "mfct":openObj, "fpar":"canSwitch" }
+			]
+		},
+		{
+			"text":"Help",
+			"mpara":[
+				{	"text":"about", "mfct":about }
+			]
+		}
+	]
+}
+
+// Default Design
+var _Design = "black";
+
+var _Menu ;
+
+// Enthaelt alle "angemeldeten" Kinder, die mit Empfangsdaten versorgt werden muessen
+var _Childs = new Object(); 
+
+var _InstalledObjects = new Object();
+
+var _UbcMask ;
+var _UbcPara ;
+var _RxCharCounter ; // fuer Anzeige in system.html
+var _RxPollCounter ;
+
+// Die aktuelle Desktop-Datei
+var _ActDesktopFile ;
+
+// Inhalt der Desktop-Konfigurationsdatei
+var _DSK;
+var _DskIdx = -1 ;	// Array-Index fuer _Dsk.winDivPara[] beim Laden des Desktops
+
+// Lade-Synchronisation
+var _LoadStat = "ready";
+var _ActWdiv ;       // Referenz fuer startende App 
+var _LoadWatch = 0;	 // Timeoutueberwachung fuer startende App (Warten auf "ready")
+
+// Polling
+var _SndDataRequestHdlr = -1 ;
+
+// Flag zur Vermeidung von Fehlermeldungen beim Loeschen des Desktops
+var _DesktopIsShuttingDown = 0 ;
+
+
+//
+// F U N K T I O N E N
+//
+
+// Initialisierungen
+function init()
+{
+	_UbcMask = 0 ;
+	_UbcPara = "";
+	_RxCharCounter = 0;
+	_RxPollCounter = 0;
+	
+	// Modul winDiv starten
+	ctrlWindowManipulation();	
+
+	// Menu installieren
+	_Menu = new menu( document.body, _MenuDef );
+
+	// Alle Apps und Objekte in Desktop laden
+	restoreDesktop();
+}
+
+
+//
+// POLLING
+//
+
+// Polling starten
+function startPolling()
+{
+	if( _SndDataRequestHdlr >= 0 )
+	{
+		alert( "startPolling: laueft schon" );
+		return ;
+	}
+	
+	_SndDataRequestHdlr = setTimeout( sndDataRequest, 100 );
+}
+
+
+// Polling stoppen
+function stopPolling()
+{
+	if( _SndDataRequestHdlr < 0 )
+	{
+		alert( "stopPolling: ist schon gestoppt" );
+		return ;
+	}
+	else
+	{
+		clearTimeout( _SndDataRequestHdlr );
+		_SndDataRequestHdlr = -1 ;
+	}
+}
+
+
+// Neue Daten anfordern
+function sndDataRequest()
+{
+	if( _SndDataRequestHdlr < 0 )
+	{
+		console.log( "Timeout ohne Handler" );
+		return ;
+	}
+		
+	// URL BINARY COMMAND DEFINITION
+	//
+	// UBC_GETCAN   = 1;    (wird im Server zuletzt ausgeführt, da Abbruch durch hohe Datenmengen moeglich)
+	// UBC_SYSSTAT  = 2;
+	// UBC_SETPARA  = 4;
+
+	// UBC_GETCAN;
+	_UbcMask |= 1 ;
+	
+	// Request zusammenbauen
+	var req = "urlBinCmd.php?ubcmask=" + _UbcMask + _UbcPara;
+	
+	// Anforderungen von Childs zurücksetzen
+	_UbcMask = 0 ;
+	_UbcPara = "";
+
+	// Request absenden
+	_SndRequest( 1, "get", req , rcvDataResponse );
+}
+
+
+// Empfang verarbeiten
+function rcvDataResponse( response, xst )
+{
+	// Pruefen, ob Polling gestoppt wurde 
+	if( _SndDataRequestHdlr < 0 )
+		return ;
+		
+	if( xst != "200" )
+	{
+		console.log( "request error: " + xst );
+
+		// naechste Anforderung triggern (mit Luft)
+		_SndDataRequestHdlr = setTimeout( sndDataRequest, 100 );
+		return;			   
+	}
+
+	// naechste Anforderung triggern
+	_SndDataRequestHdlr = setTimeout( sndDataRequest, 100 );
+
+	// Pruefen, ob Empfang vorhanden
+	if( response == null )
+		return ;
+
+	// gueltigen Empfang mitzaehlen
+	_RxPollCounter ++ ;
+
+	// Pruefen, ob leere Antwort
+	if (response == "")
+		return;
+
+	// Empfangsstatistik
+	_RxCharCounter += response.length ;
+	
+	// komprimierte json-response in Objekt parsen
+	var json = JSON_parse(response);
+	if( json != null )
+	{
+		// CAN-Empfang verarbeiten (canBase.js)
+		try{ procGetCan(json);}
+		catch(e)
+		{
+			// Das darf nie passieren
+			console.log("yes.html: procGetCan() failed" );
+		}
+		
+
+		// Alle "angemeldeten" Kinder mit Empfangsdaten versorgen
+		for( var child in _Childs )
+			try{ _Childs[child](json); }
+			catch(e)
+			{
+				// Das darf nie passieren
+				console.log("yes.html: _Childs() failed" );
+			}
+	}
+	
+	return ;
+}
+
+
+//
+// DESKTOP
+//
+
+// Den Desktop-Backup laden
+function restoreDesktop()
+{
+	_ActDesktopFile = "desktops/_backup.json";
+	loadDesktop();
+}
+
+
+// Desktop aus Konfigurationsdatei wiederherstellen
+function loadDesktop()
+{
+	// Daten-Polling waehrend Ladevorgang pausieren	
+	if( _SndDataRequestHdlr >= 0 )
+		stopPolling();
+		
+	// Desktop Konfigurationsdatei laden
+	_SndRequest( 0, "get", _ActDesktopFile, function restore(response,xst)
+	{
+		if( xst == "200" )
+		{
+			try
+			{
+				console.log( _ActDesktopFile + ":\n" + response );
+				_DSK = JSON.parse(response);
+			}
+			catch (e)
+			{
+				// json data is corrupt
+				alert( _ActDesktopFile + ":\n" + response);
+				
+				// Abbruch, Daten-Polling wieder aktivieren
+				startPolling();
+				
+				return;
+			}
+
+			// zunaechst alles loeschen
+			clearDesktop();
+
+			// Menu Dimm-Status
+			_Menu.mbar.dimmed = _DSK.menuDimmed;
+			
+			// Desktop-Design
+			setDesign( _DSK.design );
+			
+			// dann wiederherstellen
+			_DskIdx = -1 ;
+			DskLoader();
+		}
+		else
+		{
+			// Fehler anzeigen
+			alert( _ActDesktopFile + " failed: " + xst );
+			
+			// anderer Fehler als "Datei nicht vorhanden" ?
+			if( xst != "404" )
+			{
+				// endlos weiterprobieren
+				setTimeout( loadDesktop, 0 );
+			}
+			
+			// Abbruch, Daten-Polling wieder aktivieren
+			startPolling();
+		}
+	});
+}
+
+
+// Alle Apps und Objekte laden
+function DskLoader()
+{
+	// Ist noch ein Ladevorgang aktiv ?
+	if( _LoadStat != "ready" )
+	{
+		// Timeout, falls Iframe die Synchronisation nicht unterstuetzt
+		if( ++_LoadWatch < 500 )
+		{
+			// auf ready Warten
+			// auf ready Warten
+			setTimeout( DskLoader, 10 );
+			return;
+		}
+		else
+			alert( " missing ready" );
+	}
+	_LoadWatch = 0 ;
+	_DskIdx++;
+
+	if( _DskIdx < _DSK.winDivPara.length )
+	{
+		var winpara = _DSK.winDivPara[_DskIdx];
+	
+		if( winpara.type == "obj" )
+			installObj( winpara, DskLoader );	
+		else			
+			installApp( winpara, DskLoader );	
+	}
+	else
+	{
+		// Das Laden von Apps und Objekten ist abgeschlossen, jetzt werden die "Empfaenger-Objekte" verlinkt
+		var n = _WinDivs.length ;
+		for( var i= 0 ; i<n ; i++ )
+		{
+			var wd = _WinDivs[i];
+			
+			if( typeof wd._wobj == "undefined" )
+				continue;
+
+			if( typeof wd._wobj.linkSignals == "undefined" )
+				continue;
+
+			wd._wobj.linkSignals(getAllSignals());
+		}
+		
+		startPolling();
+	}
+}
+
+
+// Den Desktop-Backup speichern
+function backupDesktop()
+{
+	_ActDesktopFile = "desktops/_backup.json";
+	saveDesktop();
+	
+	alert( "Desktop saved in file \"_backup.json\"" );
+}
+
+
+// Desktop speichern
+function saveDesktop()
+{
+	// Die abzuspeichernden Desktop-Daten
+	var dsk = new Object();
+
+	dsk.design = _Design ;
+	dsk.menuDimmed = _Menu.mbar.dimmed;
+	
+	// aktuelle Daten aller Fenster 
+	dsk.winDivPara = new Array();
+	for( var i=0; i < _WinDivs.length ; i++ )
+	{
+		var wdiv = _WinDivs[i] ;
+		var winpara = wdiv.para;
+		var wobj = wdiv._wobj ;
+
+		// nur apps und objs abspeichern
+		if( winpara.instance == "undefined" )
+			continue ;
+
+		// Fensterabmessungen bereitstellen
+		var b = wdiv.wbody.getBoundingClientRect();
+
+		// Auswahl von Fensterdaten zusammenstellen
+		var tmp = new Object();
+		tmp.type = winpara.type;
+		tmp.title = winpara.title;
+		tmp.src = winpara.src;
+		tmp.instance = winpara.instance;
+		tmp.top = b.top;
+		tmp.left = b.left;
+		tmp.width = parseInt(b.width-3);
+		tmp.height = parseInt(b.height-3);
+		tmp.zIndex = wdiv._zIndex;
+
+		if( winpara.type == "app" )
+			tmp._modulpara = winpara._modulpara ;
+		else
+		{
+			if( typeof wobj != "undefined" )
+			{
+				// Bietet Objekt Parameter ?
+				if( typeof wobj.getPara != "undefined" )
+				{
+					tmp._modulpara = wobj.getPara(wdiv);
+				}
+			}
+		}
+		
+		// Auf Auswahl referenzieren
+		dsk.winDivPara[i] = tmp ;
+	}
+
+	// Desktop-Object in String umwandeln
+	var content = JSON.stringify(dsk, null, 2 );
+	
+	// Als Datei abspeichern	
+	var formData = new FormData();
+	var blob = new Blob([content], {type: 'plain/text'});
+	formData.append('file', blob, _ActDesktopFile );
+	_SndRequest( 0, "post", "edit" , function ( rsp )
+	{ 
+		if( rsp == "" )
+			alert( _ActDesktopFile + " saved successfully");
+		else
+			alert( _ActDesktopFile + " not saved");
+	}, formData )	
+}
+
+
+// kompletten Desktop loeschen
+function clearDesktop()
+{
+	var n = _WinDivs.length;
+
+	// Alle Objekte informieren, das Desktop heruntergefahren wird (Fehlermeldungen vermeiden)
+	_DesktopIsShuttingDown = true;
+
+	// Alle Fenster schliessen
+	for( var i=n-1 ; i>=0 ; i-- )
+		winClose(_WinDivs[i]);
+		
+	// Ab jetzt sind Fehlermeldungen wieder erwuenscht
+	_DesktopIsShuttingDown = false;
+}
+
+
+//
+// APPS
+//
+
+// Neue App auf Desktop oeffnen
+function openApp ( src, title )
+{
+	var wdp,w,instance ;
+	
+	// freie Instanz-Nummer suchen
+	for( instance=0 ; ; instance ++ )
+	{
+		// Instanz-Nummer in vorhandenen Apps suchen
+		for( var j=0; j < _WinDivs.length ; j++ )
+		{
+			w = _WinDivs[j];
+				
+			if( w == null ) // das sollte niemals vorkommen
+				continue ;
+				
+			if( w.para.title == title  &&  w.para.instance == instance )
+				break ;	// Instanz bereits vorhanden, weitersuchen ...
+		}
+
+		// wurde Instanz gefunden
+		if( j < _WinDivs.length )
+			continue; // naechst hoehere Instanz-Nummer ausprobieren
+						
+		// die Instanz-Nummer ist frei
+		break;
+	}
+
+	var winpara = new Object();
+
+	var scroll_y = parseInt(window.pageYOffset || document.documentElement.scrollTop  || document.body.scrollTop  || 0 );
+	var scroll_x = parseInt(window.pageXOffset || document.documentElement.scrollLeft || document.body.scrollLeft || 0 );
+
+	// Fenster-Parameter bereitstellen
+	winpara.title    = title;
+	winpara.src      = src;
+	winpara.instance = instance ;
+	winpara.top      = scroll_y + 100 ; 
+	winpara.left     = scroll_x + 100 ;
+	winpara.type 	 = "app";	
+	
+	installApp (winpara);
+}
+
+
+// App installieren
+function installApp ( winpara, onload )
+{
+	// Fenster-Style fuer Apps
+	winpara.headBackGroundColor = "#E70";
+	winpara.bodyBackGroundColor = "#CCC";
+	winpara.frameAutoHide = false;
+	
+	// Fenster an "Neu"-Position oeffnen
+	var wdiv = new winDiv(winpara);
+
+	// Callback fuer Fenster-Schliessen
+	wdiv.wcloseFCT = closeApp ;
+
+	// Iframe erzeugen
+	var ifr = document.createElement("IFRAME");
+	wdiv.wcont.appendChild(ifr);
+
+	// Synchronisation Ladeprozess
+	_LoadStat = "loading iframe " + winpara.title; 	
+	console.log( _LoadStat );
+
+	// Referenz fuer startende App bereitstellen (Parameter Referenzierung)
+	_ActWdiv = wdiv;
+
+	// Ladevorgang initiieren	
+	ifr.src = winpara.src;
+	
+	ifr.onload = function(e)
+	{ 
+		/*
+		   Der iframe ist jetzt fertig geladen und gestartet. Asynchron geht es auch hier
+		   vorbei. Wenn der iframe erfolgreich gestartet ist setzt er _LoadStat = "ready" 
+		   Das Setzen wird vom Loader ueberwacht, damit werden die apps der Reihe nach
+		   gestartet.
+        */
+		
+		// Fensterabmessungen ohne "px" bereitstellen
+		var width = wdiv.para.width;
+		var height = wdiv.para.height;
+
+		// unsichtbarer Hintergrund, damit Cursor richtig dargestellt wird
+		var cur = document.createElement("div");
+		cur.style.position = "fixed";
+		cur.style.top = "0px";
+		cur.style.left = "0px";
+		cur.style.width = width + "px";
+		cur.style.height = height + "px";
+		cur.style.backgroundColor = "rgba( 0,0,0,0.0)";
+		cur.style.zIndex = -9999;
+		ifr.contentWindow.document.body.appendChild(cur);
+
+		// resize-Funktion
+		var that = this ;
+		wdiv.resizeFOB = function fct(w,h)
+		{
+			if( that.contentWindow.resizeFct )
+			{
+				var res = that.contentWindow.resizeFct(w,h);
+				if( res )
+				{
+					w = res.width ;
+					h = res.height ;
+				}
+			}
+
+			// unsichtbaren Hintergrund anpassen
+			cur.style.width = w + "px";			
+			cur.style.height = h + "px";			
+			return res ;
+		}
+
+		// Wird von wdiv benoetigt, um Cursor am iframe-Rand zu animieren
+		wdiv.setiframecursor = function fct( x ){ try{ that.contentWindow.document.body.style.cursor = x ;}	catch(e){};	}
+	
+		// Mouse Events "bubbeln"
+		bubbleMouseEvents(this);
+		
+		// Anschluss-Funktion
+		if( onload )
+			onload();
+	}
+	ifr.onerror = function()
+	{
+		alert( "error loading iframe" );
+		if( onload )
+			onload();
+	}
+}
+
+
+// Callback-Funktion (wird beim Schliessen eines Fenster von windiv aufgerufen)
+function closeApp ( windiv )
+{
+	// Iframe der App
+	var iframe = windiv.wbody.getElementsByTagName("IFRAME")[0];
+
+	// Shutdown	Funktion aufrufen (wichtig: Handler abmelden!)
+	if(iframe.contentWindow.shutDown)
+		iframe.contentWindow.shutDown();
+	
+	return;
+}
+
+
+//
+// Objekte
+//
+
+// Neues Objekt auf Desktop oeffnen 
+function openObj ( title )
+{
+	var wdp,w,instance ;
+	
+	// freie Instanz-Nummer suchen
+	for( instance=0 ; ; instance ++ )
+	{
+		// Instanz-Nummer in vorhandenen Apps suchen
+		for( var j=0; j < _WinDivs.length ; j++ )
+		{
+			w = _WinDivs[j];
+				
+			if( w == null ) // das sollte niemals vorkommen
+				continue ;
+				
+			if( w.para.title == title  &&  w.para.instance == instance )
+				break ;	// Instanz bereits vorhanden, weitersuchen ...
+		}
+
+		// wurde Instanz gefunden
+		if( j < _WinDivs.length )
+			continue; // naechst hoehere Instanz-Nummer ausprobieren
+						
+		// die Instanz-Nummer ist frei
+		break;
+	}
+
+	var winpara = new Object();
+
+	var scroll_y = parseInt(window.pageYOffset || document.documentElement.scrollTop  || document.body.scrollTop  || 0 );
+	var scroll_x = parseInt(window.pageXOffset || document.documentElement.scrollLeft || document.body.scrollLeft || 0 );
+
+	// Fenster-Parameter bereitstellen
+	winpara.title    = title;
+	winpara.instance = instance ;
+	winpara.top      = scroll_y + 100 ;
+	winpara.left     = scroll_x + 100 ;
+	winpara.width    = _WinDefault[title].width ;
+	winpara.height   = _WinDefault[title].height ;
+	winpara.type 	 = "obj";	
+	
+	installObj(winpara);
+}
+
+// Objekt installieren
+function installObj ( winpara, onload )
+{
+	// Existenz Objekt-Quellcode pruefen (pruefen, ob die "Klasse" vorhanden)
+	var cmd = "var stat = typeof " + winpara.title ;
+	try{ eval(cmd); }
+	catch(e){}
+	
+	// Objekt-Quellcode vorhanden ?
+	if( stat == "undefined" )
+	{
+		console.log( "Lade Objekt \"" + winpara.title + "\"" );
+		
+		var host = _Host ;
+		_Host = "http://localhost/3d/";
+		
+		// Object-Quellcode anfordern
+		_SndRequest( 1, "get", "_" + winpara.title + ".js", function fct(response,xst)
+		{
+			if( xst == "200" )
+			{
+				console.log( "Objekt \"" + winpara.title + "\" wurde geladen" );
+				
+				var script = document.createElement('script');
+				script.text = response ;
+				script.id = winpara.title ;
+				document.getElementsByTagName('head')[0].appendChild(script);
+				
+				installObj( winpara, onload );
+			}
+			else
+			{
+				alert( "loading \"" + winpara.title + "\" failed" );
+			}
+		});
+		
+		_Host = host;
+		return ;
+	}
+
+	
+	// Fenster-Style fuer Objekte
+	winpara.headBackGroundColor = "#0B0";
+	winpara.bodyBackGroundColor = "rgba( 0,0,0,0.0)";
+	winpara.frameAutoHide = true;
+	
+	// Fenster an "Neu"-Position oeffnen
+	var wdiv = new winDiv(winpara);
+
+	// Callback fuer Fenster-Schliessen
+	wdiv.wcloseFCT = closeObj ;
+
+	// "hidden"-Style setzen
+	wdiv.setStyleHidden();
+	
+	// Trick 17: wenn keine onload Funktion angegeben, dann wird eine neue App nachgeladen, die keine alte Konfiguration lesen soll (default)
+	if( typeof onload == "undefined" )
+		wdiv._nocfg = true ;
+
+	// Objekt erzeugen	
+	var cmd = "var wobj = new " + winpara.title + "(wdiv)";		
+	try{ eval(cmd); }
+	catch(e)
+	{ 
+		alert( "error creating object " + winpara.title );
+		winClose(wdiv);
+		return ;
+	}
+	wdiv._wobj = wobj ;
+		
+	// Resize-FOB ("Funktion Or oBject", Objekt muss Methode resize anbieten)
+	wdiv.resizeFOB = wobj ;
+	
+	// Design
+	if( wobj.setDesign )
+		wobj.setDesign( _Design );
+	
+	// Objekt anzeigen
+	wobj.initObj(wdiv);
+
+	// Nimmt Objekt Parameter an ?
+	if( typeof wobj.setPara != "undefined" )
+	{
+		// Sind Parameter vorhanden ?
+		if( winpara._modulpara != null )
+		{
+			wobj.setPara(winpara._modulpara);
+		}
+	}
+	
+	if( onload )
+		setTimeout( onload, 0 );
+	
+	return;
+}
+
+
+// Objekt-Fenster schliessen
+function closeObj ( windiv )
+{
+	// Stop-Funktion ausfuehren
+	if( windiv._wobj )
+		windiv._wobj.stopObj();
+	
+	return;
+}
+
+
+// Auswahl Quellsignal
+// - Funktion wird von editObj zum Einholen eines Signals aufgerufen (von Parameter-Editierung des Objektes)
+// - input ist das angeklickte HTML-input-Element des Editors
+// - Die Funktion wird von editObj ueber das spezielles dsc-Objekt ("Unterstrich") gefunden
+// - Das dsc-Objekt wird von editObj an das input-Element geheftet und steht zur Verfuegung
+// - embeddedin ist das Fenster, an dem die Auswahl-Tabelle ausgerichtet wird
+// - Es wird eine Liste aller vorhandenen Quellsignale angeboten
+
+function selectObject( input, embeddedIn )
+{
+	// temp. Array aus allen Signal-Quellen erzeugen (fuer Ubergabe an Tabellenselektor-Tool)
+	
+	var array = new Array();
+	for( var i=0 ; i < _WinDivs.length ; i ++ )
+	{
+		// Ist ein Objekt angehaengt ?
+		if( _WinDivs[i]._wobj == null )
+		   continue ;
+
+		// Bietet das Objekt Signale an ?
+		if( _WinDivs[i]._wobj.signals == null )
+		   continue ;
+
+		// Referenz auf das Signal-Array des Objektes
+		var dp = _WinDivs[i]._wobj.signals ;
+
+		// Alle angebotenen Signale in Array aufnehmen
+		var arr_el, el, ob ;
+		for( var j=0 ; j < dp.length ; j++ )
+		{
+			arr_el = new Object();
+			
+			// Alle Eigenschaften uebernehmen (Der Tabellenselektor wird nur Strings anzeigen: sysdsc, usrdsc und datatype)
+			for( el in dp[j] )
+				arr_el[el] = dp[j][el] ;
+			
+			// Referenz auf das Signal (wird vom Tabellenselektor nicht angezeigt, da Objekt)
+			arr_el["signal"] = dp[j] ;
+			
+			// neues Element an Array-Ende anfuegen
+			array[array.length] = arr_el ;		
+		}
+	}
+
+	// Eintrag "Kein Signal" als letztes Array-Element
+	var arr_el = new Object();
+	arr_el.sysdscr = "no signal";
+	arr_el.usrdscr = "";
+	arr_el.datatype = "";
+	array[array.length] = arr_el ;		
+	
+
+	// Signal-Auswahl
+
+	var s = new tabSelector( embeddedIn );
+	
+	// Signal aus Array mit allen Signal-Quellen auswaehlen
+	s.tabSelect( array, { title:"Select Source Object", fontsize:24, editWidth:10, top:40, left:8 },
+	function fct(row)
+	{
+		var idx = row.rowIndex -1;
+
+		if( array[idx].sysdscr == "no signal" )
+		{
+			input._objdsc._inpFres = null;
+			
+			// Anzeige im input-Element setzen		
+			input.value = "";
+		}
+		else				
+		{
+			input._objdsc._inpFres = array[idx].signal;
+			
+			// Anzeige im input-Element setzen		
+			input.value = getFullSignalDescr(array[idx]);
+		}
+	});	
+}
+
+
+// Array mit allen vorhandenen Signalen erzeugen (Index = 0 ... n)
+function getAllSignals()
+{
+	var res = new Array();
+	
+	var n = _WinDivs.length ;
+	for( var i= 0 ; i<n ; i++ )
+	{
+		var wd = _WinDivs[i];
+		
+		if( typeof wd._wobj == "undefined" )
+			continue;
+		if( typeof wd._wobj.signals == "undefined" )
+			continue;
+
+		var arr = wd._wobj.signals;
+		var m = arr.length ;
+		for( var j=0 ; j<m ; j++ )
+			res[res.length] = arr[j];
+	}
+	
+	return res;
+}
+
+
+// Array mit allen vorhandenen Signalen erzeugen (Index = System-Signal-Bezeichnung)
+function getSignalsBySysDscr()
+{
+	var res = new Array();
+	
+	var n = _WinDivs.length ;
+	for( var i= 0 ; i<n ; i++ )
+	{
+		var wd = _WinDivs[i];
+		
+		if( typeof wd._wobj == "undefined" )
+			continue;
+		if( typeof wd._wobj.signals == "undefined" )
+			continue;
+
+		var arr = wd._wobj.signals;
+		var m = arr.length ;
+		for( var j=0 ; j<m ; j++ )
+			res[arr[j].sysdscr] = arr[j];
+	}
+	
+	return res;
+}
+
+
+// String aus System-Signal-Bezeichnung und User-Kommentar zusammenbauen
+function getFullSignalDescr( signal )
+{
+	if( signal === null )
+		return "";
+		
+	if( signal.usrdscr == "" )
+		return signal.sysdscr;
+		
+	return signal.sysdscr + " \"" + signal.usrdscr + "\"" ;
+}
+
+
+// Eventuell vorhandene User-Bezeichnung von String abschneiden
+function cutUsrDscr( str )
+{
+	// nach Leerzeichen + Anfuehrungszeichen suchen
+	var x = str.search( " \"" );
+	if( x > 0 )
+		return str.substr(0,x);
+	return str;
+}
+
+
+// Design uebernehmen
+function setDesign( design )
+{
+	_Design = design ;
+	
+	if( design == "black" )
+	{
+		document.body.style.backgroundColor = "black";
+		document.body.style.color = "white";
+	}
+	else		
+	{
+		document.body.style.backgroundColor = "white";
+		document.body.style.color = "black";
+	}
+		
+	if( _Menu.mbar.dimmed == true )
+		_Menu.mbar.setMenuStyle("dimmed", _Design );
+	else		
+		_Menu.mbar.setMenuStyle("default", _Design );
+		
+	var n = _WinDivs.length;
+	for( var i=0 ; i<n ; i++ )
+	{
+		if( _WinDivs[i]._wobj )
+			if( _WinDivs[i]._wobj.setDesign )
+				_WinDivs[i]._wobj.setDesign(design);
+	}
+}
+
+
+// Root-Menu Dimmung ein- ausschalten
+function setMenuDimmed(flag)
+{
+	// Dimm-Flag setzen
+	_Menu.mbar.dimflag = flag;
+	
+	if( flag == true )
+		_Menu.mbar.setMenuStyle("dimmed", _Design );
+	else		
+		_Menu.mbar.setMenuStyle("default", _Design );
+}
+
+
+// Dateien laden
+//
+// para.pathTop: Pfad zum betrachteten Ausgangsverzeichnis des Filesystems
+// para.top    : Top-Position, an der das Auswahl-Fenster geoeffnet wird
+// para.left   : Left-Position, an der das Auswahl-Fenster geoeffnet wird		
+//
+function fileLoad( para )
+{
+	var esp = new espFileSystem();
+	
+	// Parameter um Titel fuer das Auswahlfenster erweitern
+	para.title = "Load" ;
+	
+	// Auswahl-Tool aufrufen
+	esp.selectLoadFile( para, function (filename, path_top, path_tgt)
+	{
+		// Aktion abhaengig von Einstiegs-Verzeichnis
+		switch( path_top )
+		{
+			case "/desktops":
+				_ActDesktopFile = "." + path_tgt;
+				loadDesktop()
+				break ;
+				
+			case "/apps":
+				openApp( "." + path_tgt, filename );
+				break ;
+
+			case "/objects":
+				alert("loadobject " + path_tgt );
+				break ;
+				
+			default:
+				alert( "no action: " + path_tgt );
+		}
+	});
+}
+
+
+// Dateien speichern
+//
+// para.pathTop: Pfad zum betrachteten Ausgangsverzeichnis des Filesystems
+// para.top    : Top-Position, an der das Auswahl-Fenster geoeffnet wird
+// para.left   : Left-Position, an der das Auswahl-Fenster geoeffnet wird		
+//
+function fileSave( para )
+{
+	var esp = new espFileSystem();
+	
+	// Parameter um Titel fuer das Auswahlfenster erweitern
+	para.title = "Save" ;
+	
+	// Auswahl-Tool aufrufen
+	esp.selectSaveFile( para, function(filename, path_top, path_tgt)
+	{
+		// Aktion abhaengig von Einstiegs-Verzeichnis
+		switch( path_top )
+		{
+			case "/desktops":
+	
+				_ActDesktopFile = path_tgt.substr(1);	// ohne fuehrenden Slash, muss noch ueberarbeitet werden
+				saveDesktop()
+				break ;
+
+		}
+	});
+}
+
+
+function about()
+{
+	alert(   "YesWeCan [ Version Alpha 1.2 ]\n"
+			+"----------------------------------------------------\n"
+			+"CAN-Bus Tools and Simulation\n"
+			+"\n"
+			+"recently 2016, 2017, 2018" );
+}
+
+
+window.onload = loadInclude ;	// includer.js
+
+</script>
+</head>
+<body class="deselect">
+<!--
+<div id="debug" style="position:fixed; bottom:0px; height:800px; width:100%; background-color:#CF9; color:#000; font-size:32px; overflow:auto";></div>
+-->
+</body>
+</html>
